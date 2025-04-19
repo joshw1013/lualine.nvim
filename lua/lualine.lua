@@ -186,20 +186,22 @@ local statusline = modules.utils.retry_call_wrap(function(sections, is_focused, 
 end)
 
 --- check if any extension matches the filetype and return proper sections
----@param current_ft string : filetype name of current file
+---@param current_ft_list string[] : filetype name of current file
 ---@param is_focused boolean : whether being evaluated for focused window or not
 ---@return table|nil : (section_table) section config where components are replaced with
 ---      component objects
 -- TODO: change this so it uses a hash table instead of iteration over list
 --       to improve redraws. Add buftype / bufname for extensions
 --       or some kind of cond ?
-local function get_extension_sections(current_ft, is_focused, sec_name)
-  for _, extension in ipairs(config.extensions) do
-    if vim.tbl_contains(extension.filetypes, current_ft) then
-      if is_focused then
-        return extension[sec_name]
-      else
-        return extension['inactive_' .. sec_name] or extension[sec_name]
+local function get_extension_sections(current_ft_list, is_focused, sec_name)
+  for _, ft in ipairs(current_ft_list) do
+    for _, extension in ipairs(config.extensions) do
+      if vim.tbl_contains(extension.filetypes, ft) then
+        if is_focused then
+          return extension[sec_name]
+        else
+          return extension['inactive_' .. sec_name] or extension[sec_name]
+        end
       end
     end
   end
@@ -290,23 +292,44 @@ local function status_dispatch(sec_name)
     local current_ft = refresh_real_curwin
         and vim.api.nvim_buf_get_option(vim.api.nvim_win_get_buf(refresh_real_curwin), 'filetype')
       or vim.bo.filetype
+    local current_ft_list = vim.split(current_ft, '%.') -- handle compound filetypes c.doxygen
     local is_focused = focused ~= nil and focused or modules.utils.is_focused()
-    if
-      vim.tbl_contains(
-        config.options.disabled_filetypes[(sec_name == 'sections' and 'statusline' or sec_name)],
-        current_ft
-      )
-    then
-      -- disable on specific filetypes
-      return nil
+    for _, ft in ipairs(current_ft_list) do
+      if
+        vim.tbl_contains(config.options.disabled_filetypes[(sec_name == 'sections' and 'statusline' or sec_name)], ft)
+      then
+        -- disable on specific filetypes
+        return nil
+      end
     end
-    local extension_sections = get_extension_sections(current_ft, is_focused, sec_name)
+    local extension_sections = get_extension_sections(current_ft_list, is_focused, sec_name)
     if extension_sections ~= nil then
       retval = statusline(extension_sections, is_focused, sec_name == 'winbar')
     else
       retval = statusline(config[(is_focused and '' or 'inactive_') .. sec_name], is_focused, sec_name == 'winbar')
     end
     return retval
+  end
+end
+
+---Determines if a focus event for this window should be ignored.
+---
+---@param user_config table The user's config
+---@param win number The Neovim window handle to check
+---@return boolean Whether focus events for this window should be ignored
+local function should_ignore_focus(user_config, win)
+  local ignore_focus = user_config.options.ignore_focus
+  if type(ignore_focus) == 'table' then
+    -- ignore focus on filetypes listed in options.ignore_focus
+    local buf = vim.api.nvim_win_get_buf(win)
+    local filetype = vim.api.nvim_buf_get_option(buf, 'filetype')
+    return vim.tbl_contains(ignore_focus, filetype)
+  elseif type(ignore_focus) == 'function' then
+    return vim.api.nvim_win_call(win, function()
+      return ignore_focus(win)
+    end)
+  else
+    return false
   end
 end
 
@@ -337,16 +360,10 @@ local function refresh(opts)
   local wins = {}
   local old_actual_curwin = vim.g.actual_curwin
 
-  -- ignore focus on filetypes listed in options.ignore_focus
   local curwin = vim.api.nvim_get_current_win()
   local curtab = vim.api.nvim_get_current_tabpage()
   if last_focus[curtab] == nil or not vim.api.nvim_win_is_valid(last_focus[curtab]) then
-    if
-      not vim.tbl_contains(
-        config.options.ignore_focus,
-        vim.api.nvim_buf_get_option(vim.api.nvim_win_get_buf(curwin), 'filetype')
-      )
-    then
+    if not should_ignore_focus(config, curwin) then
       last_focus[curtab] = curwin
     else
       local tab_wins = vim.api.nvim_tabpage_list_wins(curtab)
@@ -355,12 +372,7 @@ local function refresh(opts)
       else
         local focusable_win = curwin
         for _, win in ipairs(tab_wins) do
-          if
-            not vim.tbl_contains(
-              config.options.ignore_focus,
-              vim.api.nvim_buf_get_option(vim.api.nvim_win_get_buf(win), 'filetype')
-            )
-          then
+          if not should_ignore_focus(config, win) then
             focusable_win = win
             break
           end
@@ -369,12 +381,7 @@ local function refresh(opts)
       end
     end
   else
-    if
-      not vim.tbl_contains(
-        config.options.ignore_focus,
-        vim.api.nvim_buf_get_option(vim.api.nvim_win_get_buf(curwin), 'filetype')
-      )
-    then
+    if not should_ignore_focus(config, curwin) then
       last_focus[curtab] = curwin
     end
   end
@@ -472,7 +479,7 @@ local function set_statusline(hide)
   timers.halt_stl_refresh = true
   if not hide and (next(config.sections) ~= nil or next(config.inactive_sections) ~= nil) then
     if vim.go.statusline == '' then
-      modules.nvim_opts.set('statusline', '%#Normal#', { global = true })
+      modules.nvim_opts.set('statusline', '%#lualine_transparent#', { global = true })
     end
     if config.options.globalstatus then
       modules.nvim_opts.set('laststatus', 3, { global = true })

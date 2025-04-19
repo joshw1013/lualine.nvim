@@ -49,6 +49,8 @@ For those who want to break the norms, you can create custom looks for lualine.
   <img width='700' src='https://user-images.githubusercontent.com/13149513/143395518-f6d6f748-c1ca-491b-9dab-246d0a8cf23f.png'/>
 - [bubbles](examples/bubbles.lua)
   <img width='700' src='https://user-images.githubusercontent.com/20235646/131350468-fc556196-5f46-4bfe-a72e-960f6a58db2c.png'/>
+- [cosmicink](examples/cosmicink.lua)
+  <img width='700' src='https://github.com/user-attachments/assets/c8d3e4ba-4997-42e9-a1bb-d5e2a444bbfd'/>
 
 <!-- panvimdoc-ignore-end -->
 
@@ -269,6 +271,7 @@ sections = {lualine_a = {'mode'}}
 - `selectioncount` (number of selected characters or lines)
 - `tabs` (shows currently available tabs)
 - `windows` (shows currently available windows)
+- `lsp_status` (shows active LSPs in the current buffer and a progress spinner)
 
 #### Custom components
 
@@ -375,6 +378,11 @@ options = {
                              -- for example if you don't want statusline of
                              -- your file tree / sidebar window to have active
                              -- statusline you can add their filetypes here.
+                             --
+                             -- Can also be set to a function that takes the
+                             -- currently focused window as its only argument
+                             -- and returns a boolean representing whether the
+                             -- window's statusline should be drawn as inactive.
 
   always_divide_middle = true, -- When set to true, left sections i.e. 'a','b' and 'c'
                                -- can't take over the entire statusline even
@@ -788,6 +796,29 @@ sections = {
         active = 'lualine_{section}_normal',     -- Color for active window.
         inactive = 'lualine_{section}_inactive', -- Color for inactive window.
       },
+    }
+  }
+}
+```
+
+#### lsp status component options
+
+```lua
+sections = {
+  lualine_a = {
+    {
+      'lsp_status',
+      icon = '', -- f013
+      symbols = {
+        -- Standard unicode symbols to cycle through for LSP progress:
+        spinner = { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' },
+        -- Standard unicode symbol for when LSP is done:
+        done = '✓',
+        -- Delimiter inserted between LSP names:
+        separator = ' ',
+      },
+      -- List of LSP names to ignore (e.g., `null-ls`):
+      ignore_lsp = {},
     }
   }
 }
